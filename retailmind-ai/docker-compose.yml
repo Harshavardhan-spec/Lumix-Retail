@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: retailmind_db
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-retailmind_db}
+      POSTGRES_USER: ${POSTGRES_USER:-retailmind_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-retailmind_pass}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-retailmind_user} -d ${POSTGRES_DB:-retailmind_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    container_name: retailmind_backend
+    restart: always
+    command: >
+      sh -c "python backend/manage.py migrate &&
+             python backend/manage.py collectstatic --noinput &&
+             python backend/manage.py runserver 0.0.0.0:8000"
+    volumes:
+      - ./backend:/app/backend
+      - ./ml:/app/ml
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=True
+      - SECRET_KEY=${SECRET_KEY:-django-insecure-retailmind-super-secret-key-change-in-prod}
+      - DB_NAME=${POSTGRES_DB:-retailmind_db}
+      - DB_USER=${POSTGRES_USER:-retailmind_user}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-retailmind_pass}
+      - DB_HOST=db
+      - DB_PORT=5432
+      - CORS_ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+    container_name: retailmind_frontend
+    restart: always
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app/frontend
+      - /app/frontend/node_modules
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:

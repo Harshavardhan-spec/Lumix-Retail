@@ -1,0 +1,1 @@
+# RetailMind Django Project Package
